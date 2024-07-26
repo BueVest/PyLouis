@@ -38,9 +38,8 @@ function for information about how liblouis searches for these tables.
 @author: Babbage B.V. <info@babbage.com>
 @author: Andre-Abush Clause <dev@andreabc.net>
 """
-import os
 
-from sys import getfilesystemencoding, platform, version_info
+from sys import byteorder, getfilesystemencoding, platform, version_info
 from atexit import register
 from ctypes import (
     c_ushort,
@@ -57,11 +56,11 @@ from ctypes import (
 try:  # Native win32
     from ctypes import WINFUNCTYPE, windll
     _loader, _functype = windll, WINFUNCTYPE
-    liblouis = _loader[os.path.join(os.path.dirname(__file__), "liblouis.dll")]
 except ImportError:  # Unix/Cygwin
     _loader, _functype = cdll, CFUNCTYPE
-    liblouis = _loader["liblouis.so.20"]
+liblouis = _loader["liblouis.so.20"]
 _is_windows = platform == "win32"
+_endianness = "be" if byteorder == "big" else "le"
 
 # { Module Configuration
 #: Specifies the charSize (in bytes) used by liblouis.
@@ -80,18 +79,15 @@ outlenMultiplier = 4 + wideCharBytes * 2
 fileSystemEncoding = "mbcs" if _is_windows else getfilesystemencoding()
 #: Specifies the encoding to use when converting from byte strings to unicode strings.
 #: @type: str
-conversionEncoding = "utf_%d_le" % (wideCharBytes * 8)
+conversionEncoding = "utf_%d_%s" % (wideCharBytes * 8, _endianness)
 # }
-
-# Find tables
-tablePath = os.path.join(os.path.dirname(__file__), 'tables')
 
 # Some general utility functions
 def _createTablesString(tablesList):
     """Creates a tables string for liblouis calls"""
     return b",".join(
         [
-            (tablePath + "\\" + x).encode(fileSystemEncoding) if isinstance(x, str) else bytes(x)
+            x.encode(fileSystemEncoding) if isinstance(x, str) else bytes(x)
             for x in tablesList
         ]
     )
@@ -203,13 +199,6 @@ liblouis.lou_registerLogCallback.restype = None
 
 liblouis.lou_setLogLevel.restype = None
 liblouis.lou_setLogLevel.argtypes = (c_int,)
-
-liblouis.lou_setDataPath.argtypes = (c_char_p,)
-liblouis.lou_setDataPath.restype = c_char_p
-
-liblouis.lou_getDataPath.restype = c_char_p
-
-liblouis.lou_getTable.argtypes = (c_char_p,)
 
 
 def version():
@@ -510,8 +499,7 @@ def getTypeformForEmphClass(tableList, emphClass):
     @see: lou_getTypeformForEmphClass in the liblouis documentation
     """
     tablesString = _createTablesString(tableList)
-    if _is_py3:
-        emphClass = emphClass.encode("ASCII")
+    emphClass = emphClass.encode("ASCII")
     return liblouis.lou_getTypeformForEmphClass(tablesString, emphClass)
 
 
@@ -639,21 +627,7 @@ LOG_OFF = 60000
 
 logLevels = (LOG_ALL, LOG_DEBUG, LOG_INFO, LOG_WARN, LOG_ERROR, LOG_FATAL, LOG_OFF)
 
-
-def setDataPath(path):
-    return (liblouis.lou_setDataPath(path.encode(fileSystemEncoding)).decode(fileSystemEncoding))
-#enddef
-
-
-def getDataPath():
-    return (liblouis.lou_getDataPath().decode(fileSystemEncoding))
-#enddef
-
 if __name__ == "__main__":
     # Just some common tests.
     print(version())
-    setDataPath("../../liblouis/tables/")
-#    print (getDataPath())
-    tablePath = "..\\..\\liblouis\\tables\\"
-    print(translate([tablePath+"us-table.dis", tablePath+"da-dk-g26.ctb"], "Hej verden!", typeform=[0,0,0,0,3,3,3,0,0,0,0]))
-    
+    print(translate([b"../tables/en-us-g2.ctb"], "Hello world!", cursorPos=5))
